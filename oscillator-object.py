@@ -252,6 +252,7 @@ class WaveWriter:
         output = wave.open(str(name), "wb")
 
         nframes = framerate * sample_length
+        # print(nframes)
 
         output.setparams((nchannels, sampwidth, framerate, nframes, comptype, compname))
 
@@ -262,14 +263,14 @@ class WaveWriter:
         buffer = bytearray()
 
         if nchannels == 2:
-            for i in range(0, sample_length):
+            for i in range(0, nframes): # sample_length):
                 # value = round(wav[i])
                 value = round(next(gen))
                 packed_value = struct.pack("h", value)
                 buffer.extend(packed_value)
                 buffer.extend(packed_value)
         else:
-            for i in range(0, sample_length):
+            for i in range(0, nframes): # sample_length):
                 # value = round(wav[i])
                 value = round(next(gen))
                 packed_value = struct.pack("h", value)
@@ -278,22 +279,125 @@ class WaveWriter:
         frames = output.getnframes()
         output.close()
 
+    @staticmethod
+    def write2(gen, seconds=1, name=None, nchannels=2, sampwidth=2, framerate=SAMPLING_RATE, nframes=0, comptype="NONE", compname="not compressed"):
+        if not name:
+            name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        if not name.endswith(".wav"):
+            name = str(name) + ".wav"
+
+
+        num_samples = round(seconds * framerate)
+
+        # http://soundfile.sapp.org/doc/WaveFormat/
+        chunk_id = b"RIFF"
+        bits_per_sample = sampwidth * 8
+        subchunk_2_size = (num_samples * nchannels * bits_per_sample) // 8
+        # chunk_size = 36 + subchunk_2_size
+        format = b"WAVE"
+        subchunk_1_id = b"fmt "
+        subchunk_1_size = 16
+        chunk_size = 4 + (8 + subchunk_1_size) + (8 + subchunk_2_size)
+        audio_format = 1
+        sample_rate = framerate
+        byte_rate = (sample_rate * nchannels * bits_per_sample) // 8
+        block_align = (nchannels * bits_per_sample) // 8
+        extra_param_size = None
+        extra_params = None
+        subchunk_2_id = b"data"
+
+        big_char_array = ">4s"
+        little_int = "<I"
+        little_short = "<H"
+        little_short_signed = "<h"
+
+        characters = struct.Struct(big_char_array)
+        integers = struct.Struct(little_int)
+        shorts = struct.Struct(little_short)
+        data = struct.Struct(little_short_signed)
+
+        buffer = bytearray(chunk_size + 8)
+
+
+        offset = 0
+        characters.pack_into(buffer, offset, chunk_id)
+        # print(buffer)
+        offset += 4
+        integers.pack_into(buffer, offset, chunk_size)
+        # print(buffer)
+        offset += 4
+        characters.pack_into(buffer, offset, format)
+        # print(buffer)
+        offset += 4
+        characters.pack_into(buffer, offset, subchunk_1_id)
+        # print(buffer)
+        offset += 4
+        integers.pack_into(buffer, offset, subchunk_1_size)
+        # print(buffer)
+        offset += 4
+        shorts.pack_into(buffer, offset, audio_format)
+        # print(buffer)
+        offset += 2
+        shorts.pack_into(buffer, offset, nchannels)
+        # print(buffer)
+        offset += 2
+        integers.pack_into(buffer, offset, sample_rate)
+        # print(buffer)
+        offset += 4
+        integers.pack_into(buffer, offset, byte_rate)
+        # print(buffer)
+        offset += 4
+        shorts.pack_into(buffer, offset, block_align)
+        # print(buffer)
+        offset += 2
+        shorts.pack_into(buffer, offset, bits_per_sample)
+        # print(buffer)
+        offset += 2
+        characters.pack_into(buffer, offset, subchunk_2_id)
+        # print(buffer)
+        offset += 4
+        integers.pack_into(buffer, offset, subchunk_2_size)
+        # print(buffer)
+        offset += 4
+
+        iter(gen)
+
+        if nchannels == 2:
+            for i in range(0, num_samples):
+                value = round(next(gen))
+                print(value)
+                data.pack_into(buffer, offset, value)
+                offset += sampwidth
+                data.pack_into(buffer, offset, value)
+                offset += sampwidth
+        else:
+            for i in range(0, num_samples):
+                value = round(next(gen))
+                data.pack_into(buffer, offset, value)
+                offset += sampwidth
+
+        with open(str(name), "wb") as output:
+            output.write(buffer)
+
 def main():
     # A_sine = SineOscillator(amplitude=VOLUME_MAX)
-    # WaveWriter.write(A_sine, name="A", sample_length=9600)
+    # WaveWriter.write(A_sine, name="A", sample_length=10)
     # file = wave.open("A.wav", "rb")
     # print(file.getnframes())
     # file.close()
 
-    A_sine = SineOscillator()
+    # A_sine = SineOscillator()
 
-    player = WavePlayer(44100, 2)
+    # player = WavePlayer(44100, 2)
     # player.play(A_sine, 10)
     oscillators = list()
     for i in range(45):
-        oscillators.append(SineOscillator(frequency=A4*i))
+        oscillators.append(SineOscillator(frequency=A4 * i, amplitude=VOLUME_MAX // (2 * (i + 1))))
     complex_A = WaveAdder(*oscillators)
-    player.play(complex_A, 10)
+    # player.play(complex_A, 10)
+
+    WaveWriter.write2(complex_A, seconds=10, name="A_complex2.wav")
+    WaveWriter.write(complex_A, sample_length=10, name="A_complex.wav")
 
 if __name__ == "__main__":
     main()
